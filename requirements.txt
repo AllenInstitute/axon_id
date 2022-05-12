@@ -1,0 +1,10 @@
+numpy
+pandas 
+task-queue 
+vtk
+cloud-volume
+caveclient
+meshparty>=1.12.0
+pcg_skel>=0.1.0
+
+
