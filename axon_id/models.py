@@ -470,13 +470,34 @@ def remove_axons(mw, mws_cf_destination_path, m1, m2):
     cloud_root = os.environ.get('SAVE_LOCATION', 'gs://allen-minnie-phase3/minniephase3-emily-pcg-skeletons')
     cloud_path = os.path.join(cloud_root, mws_cf_destination_path)
 
+    classification_df_rf2 = make_classification_df(mw, m1, m2)
+
+    # recreate the meshwork files to include only their dendrite classified segments
+    print('skeletonizing ' + str(mw.seg_id) + "...")
+
+    # create and apply mask
+    # create mesh mask 
+    print('creating mesh mask') 
+    dendrite_mask = _skel_dendrite_map(classification_df_rf2)
+    my_verts = mw.SkeletonIndex(dendrite_mask[dendrite_mask['tf dendrite'] == True]['skeleton index'])
+    print('applying mesh mask') 
+    print(dendrite_mask)
+    mw.apply_mask(my_verts.to_mesh_mask)
+
+    print('saving to cloud') 
+
+    neuron_io.write_meshwork_h5_to_cf(mw, cloud_path)
+
+    print(str(mw.seg_id) + " skeletonized and saved to cloud")
+
+def make_classification_df(mw, m1, m2):
+    '''creates the classficiation df after 2 rounds of axon identification with 2 models'''
     # import the ML models
     # random forest model 1: classify axon/dendrite round 1
     rf1 = joblib.load(m1)
     # random forest model 2: classify axon dendrite with round 1 neighboring segment classification as feature
     rf2 = joblib.load(m2)
-
-    # extract features
+   # extract features
     print('extracting features for body ' + str(mw.seg_id) + '...')
     features_df = extract_features([mw])
 
@@ -500,25 +521,7 @@ def remove_axons(mw, mws_cf_destination_path, m1, m2):
     # save results to memory
     classification_df_rf2 = classification_df_rf1_neighbors.copy()
     classification_df_rf2['predicted classification rf2'] = predicted_segment_classifications_rf2
-
-    # recreate the meshwork files to include only their dendrite classified segments
-    print('skeletonizing ' + str(mw.seg_id) + "...")
-
-    # create and apply mask
-    # create mesh mask 
-    print('creating mesh mask') 
-    dendrite_mask = _skel_dendrite_map(classification_df_rf2)
-    my_verts = mw.SkeletonIndex(dendrite_mask[dendrite_mask['tf dendrite'] == True]['skeleton index'])
-    print('applying mesh mask') 
-    print(dendrite_mask)
-    mw.apply_mask(my_verts.to_mesh_mask)
-
-    print('saving to cloud') 
-
-    neuron_io.write_meshwork_h5_to_cf(mw, cloud_path)
-
-    print(str(mw.seg_id) + " skeletonized and saved to cloud")
-
+    return classification_df_rf2
 
 @queueable
 def remove_axons_tq(source_cloud_folder, filename, destination_cloud_file, m1, m2):
