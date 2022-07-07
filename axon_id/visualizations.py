@@ -4,8 +4,8 @@ import cloudvolume
 from caveclient import CAVEclient
 from meshparty import trimesh_vtk
 
-client = CAVEclient('minnie65_phase3_v1')
-cv = cloudvolume.CloudVolume(client.info.segmentation_source(), progress = False, use_https = True, parallel=24)
+#client = CAVEclient('minnie65_phase3_v1')
+#cv = cloudvolume.CloudVolume(client.info.segmentation_source(), progress = False, use_https = True, parallel=24)
 
 
 def visualize(msh, skel_color = (0,0,0), skel_width = 3,

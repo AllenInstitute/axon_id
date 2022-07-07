@@ -14,7 +14,7 @@ from cloudfiles import CloudFiles
 client = CAVEclient('minnie65_phase3_v1')
 cv = cloudvolume.CloudVolume(client.info.segmentation_source(), progress = False, use_https = True, parallel=24)
 
-client.materialize.version = 117 
+#client.materialize.version = 117 
 
 def write_meshwork_h5_to_cf(msh, cf_path, filename = None):
 
@@ -65,18 +65,28 @@ def write_skeleton_h5_to_cf(skel, cf_path, filename = None):
         cf.put(f'{filename}.h5', bio.read())
 
 
-def load_mws_from_cloud(cf_folder_path, asdict = False, update_roots = False):
+def load_mws_from_cloud(cf_folder_path, asdict = False, update_roots = False, n = False, filenames = None):
     '''
     loads all meshwork files from a folder in the cloud
     cloud root is in .env.docker, cf_folder path will just be a folder name in the cloud location
     allen-minnie-phase3/minniephase3-emily-pcg-skeletons
     
     '''
+
+
     cloud_root = os.environ.get('SAVE_LOCATION', 'gs://allen-minnie-phase3/minniephase3-emily-pcg-skeletons')
     cloud_path = os.path.join(cloud_root, cf_folder_path)
 
     cf = CloudFiles(cloud_path)
-    binaries = cf[:]
+    if filenames:
+        if type(filenames)!= list:
+            raise TypeError('filenames must be a list of filename/s')
+        binaries = cf.get(filenames)
+    elif n:
+        binaries = cf[:n]
+    else:
+        binaries = cf[:]
+
 
     # create a list or dict that will be filled with meshwork objects
     if asdict == True:
@@ -84,7 +94,8 @@ def load_mws_from_cloud(cf_folder_path, asdict = False, update_roots = False):
     else:
         mwlist = []
 
-    
+    if n != False:
+        binaries = binaries[:n]
     for i in range(len(binaries)):
         with io.BytesIO(cf.get(binaries[i]['path'])) as f:
             f.seek(0)

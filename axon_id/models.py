@@ -48,11 +48,11 @@ def extract_features(mshwks):
     for msh in mshwks:
         seg_id = msh.seg_id
         # update the seg_id if necessary 
-        if client.chunkedgraph.is_latest_roots([int(msh.seg_id)]):
-            updated_seg_id = msh.seg_id
-        else:
-            updated_seg_id = neuron_io.get_root_id_from_point(msh.skeleton.vertices[msh.skeleton.root])
-            print('updated root is ' + str(updated_seg_id))
+        #if client.chunkedgraph.is_latest_roots([int(msh.seg_id)]):
+        #    updated_seg_id = msh.seg_id
+        #else:
+        #    updated_seg_id = neuron_io.get_root_id_from_point(msh.skeleton.vertices[msh.skeleton.root])
+        #    print('updated root is ' + str(updated_seg_id))
 
         body_df =pd.DataFrame(data = None, columns = ['root_id', 'supervoxel_id', 'soma_pt', 'segment', 'ctr_pt', 
                                               'length', 'pre', 'n_pre', 'post', 'n_post', 'total_syn', 'density',
@@ -67,7 +67,7 @@ def extract_features(mshwks):
 
             body_df.loc[i, 'root_id'] = seg_id
             
-            body_df.loc[i, 'supervoxel_id'] = neuron_io.root_to_supervoxel([updated_seg_id], soma_df)[0]
+            body_df.loc[i, 'supervoxel_id'] = msh.anno.soma_row['pt_supervoxel_id'][0]
 
             body_df.loc[i, 'soma_pt'] = msh.skeleton.root
 
