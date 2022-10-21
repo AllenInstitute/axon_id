@@ -307,7 +307,7 @@ def neighboring_segments_multiple_bodies(df, cf_skel_source_path):
     #final df that will contain neighboring segment information
     final_df = pd.DataFrame(columns = df.columns)
     # mapping of seg id to mw file pulled from speficied cloudfile folder 
-    seg_id_mw_dict = neuron_io.load_mws_from_cloud(cf_skel_source_path, asdict = True, update_roots = True)
+    seg_id_mw_dict = neuron_io.load_mws_from_folder(cf_skel_source_path, asdict = True, update_roots = True)
     
     #iterate through each unique body in the features df
     for sup_id in df['supervoxel_id'].unique():
@@ -376,7 +376,7 @@ def remove_axons_multiple_bodies(mws_cf_source_path, skels_cf_destination_path, 
 
     '''
 
-    mws = neuron_io.load_mws_from_cloud(mws_cf_source_path)
+    mws = neuron_io.load_mws_from_folder(mws_cf_source_path)
 
     print('extracting features...')
     features_df = extract_features(mws)
@@ -435,7 +435,7 @@ def remove_axons_multiple_bodies(mws_cf_source_path, skels_cf_destination_path, 
 
         print('saving to cloud') 
 
-        neuron_io.write_meshwork_h5_to_cf(mw, cloud_path)
+        neuron_io.write_meshwork_h5_to_folder(mw, cloud_path)
 
         print(str(mw.seg_id) + " skeletonized and saved to cloud")
 
@@ -486,7 +486,7 @@ def remove_axons(mw, mws_cf_destination_path, m1, m2):
 
     print('saving to cloud') 
 
-    neuron_io.write_meshwork_h5_to_cf(mw, cloud_path)
+    neuron_io.write_meshwork_h5_to_folder(mw, cloud_path)
 
     print(str(mw.seg_id) + " skeletonized and saved to cloud")
 

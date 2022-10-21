@@ -8,7 +8,6 @@ from meshparty import meshwork
 from meshparty.skeleton_io import write_skeleton_h5
 from taskqueue import queueable
 import io
-import h5py
 from cloudfiles import CloudFiles
 
 client = CAVEclient('minnie65_phase3_v1')
@@ -16,29 +15,36 @@ cv = cloudvolume.CloudVolume(client.info.segmentation_source(), progress = False
 
 #client.materialize.version = 117 
 
-def write_meshwork_h5_to_cf(msh, cf_path, filename = None):
+def write_meshwork_h5_to_folder(msh, folder_path, filename = None):
 
     """
     writes all parts of meshwork to an h5, saves in a specified path
+    if a the path is a cloudpath with gs://, will save to that cloud path 
     
     Parameters
     ----------
     msh : meshparty.meshwork.meshwork.Meshwork
         meshwork of the neuron to be saved
-    cf_folder : string
+    folder_path : string
         path to the folder in which you wish the meshes to be stored
         example - local file ./meshworks would be -  'file://./meshworks'
 
     """
-    cf = CloudFiles(cf_path)
+
 
     if filename == None:
-        filename = msh.seg_id
+        filename = f'{msh.seg_id}.h5'
+    
+    if 'gs://' in folder_path:
+        cf = CloudFiles(folder_path)
 
-    with io.BytesIO() as bio:
-        msh.save_meshwork(bio)
-        bio.seek(0)
-        cf.put(f'{filename}.h5', bio.read())
+        with io.BytesIO() as bio:
+            msh.save_meshwork(bio)
+            bio.seek(0)
+            cf.put(f'{filename}.h5', bio.read())
+    
+    else:
+        msh.save_meshwork(f'{filename}.h5')
 
 def write_skeleton_h5_to_cf(skel, cf_path, filename = None):
 
@@ -65,19 +71,26 @@ def write_skeleton_h5_to_cf(skel, cf_path, filename = None):
         cf.put(f'{filename}.h5', bio.read())
 
 
-def load_mws_from_cloud(cf_folder_path, asdict = False, update_roots = False, n = False, filenames = None):
+def load_mws_from_folder(folder_path, local = False, asdict = False, update_roots = False, 
+                    n = False, filenames = None):
     '''
-    loads all meshwork files from a folder in the cloud
+    loads all meshwork files from a local folder or in the cloud
     cloud root is in .env.docker, cf_folder path will just be a folder name in the cloud location
     allen-minnie-phase3/minniephase3-emily-pcg-skeletons
     
     '''
 
 
-    cloud_root = os.environ.get('SAVE_LOCATION', 'gs://allen-minnie-phase3/minniephase3-emily-pcg-skeletons')
-    cloud_path = os.path.join(cloud_root, cf_folder_path)
-
-    cf = CloudFiles(cloud_path)
+    if 'gs://' not in folder_path and not local:
+        cloud_root = os.environ.get('SAVE_LOCATION', 'gs://allen-minnie-phase3/minniephase3-emily-pcg-skeletons')
+        folder_path = os.path.join(cloud_root, folder_path)
+    elif not local:
+        folder_path = folder_path
+    elif local:
+        folder_path = 'file://' + folder_path
+        
+    
+    cf = CloudFiles(folder_path)
     if filenames:
         if type(filenames)!= list:
             raise TypeError('filenames must be a list of filename/s')
@@ -180,7 +193,7 @@ def list_meshworks(bodies, folder_path, verbose = False, secret = None):
                                     segmentation_fallback = False, )
         
         
-        write_meshwork_h5_to_cf(msh, cloud_path, filename = body)
+        write_meshwork_h5_to_folder(msh, cloud_path, filename = body)
                  
         if verbose == True:
             print(str(count) + ': ' + str(body) + ', ' +  str(root_id))
@@ -189,7 +202,7 @@ def list_meshworks(bodies, folder_path, verbose = False, secret = None):
     
 
 
-def retreive_meshes(folder_path):
+def retrieve_meshes(folder_path):
     
     """
     loads all meshworks from a folder and outputs them as a list of meshwork objects
@@ -332,7 +345,7 @@ def update_root_from_mw(mw):
 @queueable
 def pcg_skeletonize(root_id, cloud_path):
     mw = pcg_skel.pcg_meshwork(root_id = root_id, client = client, cv = cv, refine = 'all')
-    write_meshwork_h5_to_cf(mw, cloud_path)
+    write_meshwork_h5_to_folder(mw, cloud_path)
 
 
 
@@ -348,3 +361,15 @@ def add_cloud_path(could_folder):
     cloud_root = os.environ.get('SAVE_LOCATION', 'gs://allen-minnie-phase3/minniephase3-emily-pcg-skeletons')
     cloud_path = os.path.join(cloud_root, could_folder)
     return cloud_path
+
+
+def swc_to_df(directory_path, filename, **kwargs):
+    '''filepath needs to have ://
+    if local use file://{path}'''
+
+    cf = CloudFiles(directory_path)
+    byt = io.BytesIO(cf.get(filename))
+    df = pd.read_csv(byt,
+        sep=" ",
+        comment="#",
+        names=["id", "type", "x", "y", "z", "r", "parent_id"])
