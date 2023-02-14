@@ -301,3 +301,78 @@ def visualize_skeleton(skel, skel_color = (0,0,0), skel_width = 3, segment = Non
 
     return visualization
 
+# from Forrest
+import pandas as pd
+import io
+import os
+from meshparty import skeleton, skeleton_io
+SWC_COLUMNS = ('id', 'type', 'x', 'y', 'z', 'radius', 'parent',)
+COLUMN_CASTS = {
+    'id': int,
+    'parent': int,
+    'type': int
+}
+def apply_casts(df, casts):
+
+    for key, typ in casts.items():
+        df[key] = df[key].astype(typ)
+
+        
+def read_skeleton(root_id, nuc_id, cloud_path = "https://storage.googleapis.com/allen-minnie-phase3/minniephase3-emily-pcg-skeletons/minnie_all/BIL_neurons/file_groups/"
+):
+    file_path=cloud_path + f"{root_id}_{nuc_id}/{root_id}_{nuc_id}.swc"
+    #print(file_path)
+    df =read_swc(file_path)
+    verts = df[['x','y','z']].values
+    edges = df[['id','parent']].iloc[1:].values
+    sk=skeleton.Skeleton(verts, edges, vertex_properties={'radius':df['radius'], 
+                                                       'compartment':df['type']})
+    return sk
+
+def read_swc(path, columns=SWC_COLUMNS, sep=' ', casts=COLUMN_CASTS):
+
+    """ Read an swc file into a pandas dataframe
+    """
+    if "://" not in path:
+        path = "file://" + path
+
+    #cloudpath, file = os.path.split(path)
+    #cf = CloudFiles(cloudpath)
+    #path = io.BytesIO(cf.get(file))
+    
+    df = pd.read_csv(path, names=columns, comment='#', sep=sep)
+    apply_casts(df, casts)
+    return df
+
+
+
+import seaborn as sns
+def plot_cell(ax, sk, title='', plot_depths=False):
+    
+    MORPH_COLORS = {3: "firebrick", 4: "salmon", 2: "steelblue"}
+    
+    for compartment, color in MORPH_COLORS.items():
+        lines_x = []
+        lines_y = []
+        guess = None
+        skn=sk.apply_mask(sk.vertex_properties['compartment']==compartment)
+        for cover_path in skn.cover_paths:
+            path_verts = skn.vertices[cover_path,:]
+            ax.plot(path_verts[:,0], path_verts[:,1], c=color, linewidth=1)
+            
+        ax.set_aspect("equal")
+    plt.gca().invert_yaxis()
+
+    #ax.set_ylim(1100, 300)
+    sns.despine(left=True, bottom=True)
+    #ax.set_xticks([])
+    #ax.set_yticks([])
+    ax.set_title(title)
+
+# for k, row in select_df[['pt_root_id','id']].iterrows():
+
+#     sk = read_skeleton(row.pt_root_id, row.id)
+#     f, ax = plt.subplots(figsize=(5,5))
+#     plot_cell(ax, sk)
+#     if k>10:
+#         break

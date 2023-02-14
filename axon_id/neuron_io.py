@@ -363,7 +363,7 @@ def add_cloud_path(could_folder):
     return cloud_path
 
 
-def swc_to_df(directory_path, filename, **kwargs):
+def swc_to_df(directory_path, filename):
     '''filepath needs to have ://
     if local use file://{path}'''
 
@@ -373,3 +373,4 @@ def swc_to_df(directory_path, filename, **kwargs):
         sep=" ",
         comment="#",
         names=["id", "type", "x", "y", "z", "r", "parent_id"])
+    return df
