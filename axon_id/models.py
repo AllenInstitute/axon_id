@@ -38,11 +38,10 @@ def extract_features(mshwks):
     
     
     '''
-    final_df = pd.DataFrame(data = None, columns = ['root_id', 'supervoxel_id', 'soma_pt', 'segment', 'ctr_pt',  
-                                            'length', 'pre', 'n_pre', 'post', 'n_post', 'total_syn', 'density',
-                                            'soma_dist']) 
+    final_df = pd.DataFrame(data = None, columns = ['root_id', 'soma_id', 'soma_pt', 'segment', 'ctr_pt',  
+                                            'length', 'pre', 'n_pre', 'pre_size', 'post', 'n_post', 'post_size', 
+                                            'total_syn', 'density', 'soma_dist', 'radius']) 
 
-    soma_df = client.materialize.query_table('nucleus_neuron_svm')
 
 
     for msh in mshwks:
@@ -54,12 +53,21 @@ def extract_features(mshwks):
         #    updated_seg_id = neuron_io.get_root_id_from_point(msh.skeleton.vertices[msh.skeleton.root])
         #    print('updated root is ' + str(updated_seg_id))
 
-        body_df =pd.DataFrame(data = None, columns = ['root_id', 'supervoxel_id', 'soma_pt', 'segment', 'ctr_pt', 
+        body_df =pd.DataFrame(data = None, columns = ['root_id', 'soma_id', 'soma_pt', 'segment', 'ctr_pt', 
                                               'length', 'pre', 'n_pre', 'post', 'n_post', 'total_syn', 'density',
-                                              'soma_dist']) 
-        segs = list(map(list,msh.skeleton.segments))
+                                              'soma_dist', 'radius']) 
+        
+        segs = msh.skeleton.segments
+        
 
         body_df.loc[:,'segment'] = segs
+
+        seg_df = msh.anno.segment_properties.df.set_index('mesh_ind')
+
+        seg_df = msh.anno.segment_properties.df
+        seg_df = seg_df.set_index('mesh_ind_filt')
+
+
 
         for i in range(len(body_df)):
 
@@ -67,24 +75,44 @@ def extract_features(mshwks):
 
             body_df.loc[i, 'root_id'] = seg_id
             
-            body_df.loc[i, 'supervoxel_id'] = msh.anno.soma_row['pt_supervoxel_id'][0]
+            body_df.loc[i, 'soma_id'] = msh.anno.soma_row['id'][0]
 
             body_df.loc[i, 'soma_pt'] = msh.skeleton.root
 
             body_df.loc[i, 'ctr_pt'] = seg[len(seg)//2]
 
             body_df.loc[i, 'length'] = len(seg)
-        
-            body_df.at[i, 'pre'] = set(seg) & set(msh.skeleton.mesh_to_skel_map[msh.anno.pre_syn.mesh_index])
-            body_df.loc[i, 'n_pre'] = len(body_df.loc[i, 'pre'])
+
+            # pull out mesh indices of seg 
+            msh_seg = [s.to_mesh_index for s in seg]
+            # flatten
+            msh_seg = [item for sublist in msh_seg for item in sublist]
+
+            presyn_df = msh.anno.pre_syn.df.set_index('pre_pt_mesh_ind')
+            presyn_df = presyn_df[presyn_df.index.isin(msh_seg)]
+            pre_msh_inds = msh.anno.pre_syn.mesh_index
+            body_df.at[i, 'pre'] = np.intersect1d(seg, msh.skeleton.mesh_to_skel_map[pre_msh_inds])
+            body_df.loc[i, 'n_pre'] = len(presyn_df)
+            body_df.at[i, 'pre_size'] = presyn_df['size'].sum()
+
             
-            body_df.at[i, 'post'] = set(seg) & set(msh.skeleton.mesh_to_skel_map[msh.anno.post_syn.mesh_index])
-            body_df.loc[i, 'n_post'] = len(body_df.loc[i, 'post'])
-            
+            postsyn_df = msh.anno.post_syn.df.set_index('post_pt_mesh_ind')
+            postsyn_df = postsyn_df[postsyn_df.index.isin(msh_seg)]
+            post_msh_inds = msh.anno.post_syn.mesh_index
+            body_df.at[i, 'post'] = np.intersect1d(seg, msh.skeleton.mesh_to_skel_map[post_msh_inds])
+            body_df.loc[i, 'n_post'] = len(postsyn_df)
+            body_df.at[i, 'post_size'] = postsyn_df['size'].sum()
+
             body_df.loc[i, 'total_syn'] = body_df.loc[i, 'n_pre'] + body_df.loc[i, 'n_post']
             body_df.loc[i, 'density'] = body_df.loc[i, 'total_syn']/body_df.loc[i, 'length']
-            
             body_df.loc[i, 'soma_dist'] = len(msh.skeleton.path_between(int(msh.skeleton.root), msh.skeleton.segments[i][-1]))
+
+            x = np.mean(seg_df.loc[seg_df.index.isin(msh_seg)]['r_eff'])
+            body_df.loc[i, 'radius'] = np.mean(seg_df.loc[seg_df.index.isin(msh_seg)]['r_eff'])
+            if np.isnan(x):
+                print(x)
+                print(msh_seg)
+                print(seg_df.loc[seg_df.index.isin(msh_seg)])
 
         final_df = pd.concat([final_df, body_df.replace(np.nan, '-')])
         
@@ -156,17 +184,17 @@ def classify_axon_dendrite(msh, model):
             
             classified_segments_df.loc[i, 'length'] = len(seg)
             
-            classified_segments_df.at[i, 'pre'] = set(seg) & set(msh.skeleton.mesh_to_skel_map[msh.anno.pre_syn.mesh_index])
+            classified_segments_df.at[i, 'pre'] = np.intersect1d(seg, msh.skeleton.mesh_to_skel_map[msh.anno.pre_syn.mesh_index])
             classified_segments_df.loc[i, 'n_pre'] = len(classified_segments_df.loc[i, 'pre'])
             
-            classified_segments_df.at[i, 'post'] = set(seg) & set(msh.skeleton.mesh_to_skel_map[msh.anno.post_syn.mesh_index])
+            classified_segments_df.at[i, 'post'] = np.intersect1d(seg, msh.skeleton.mesh_to_skel_map[msh.anno.post_syn.mesh_index])
             classified_segments_df.loc[i, 'n_post'] = len(classified_segments_df.loc[i, 'post'])
             
             classified_segments_df.loc[i, 'total_syn'] = classified_segments_df.loc[i, 'n_pre'] + classified_segments_df.loc[i, 'n_post']
             classified_segments_df.loc[i, 'density'] = classified_segments_df.loc[i, 'total_syn']/classified_segments_df.loc[i, 'length']
             
             classified_segments_df.loc[i, 'soma_dist'] = len(msh.path_between(int(msh.skeleton.seg_id), msh.skeleton.segments[i][-1], return_as_skel = True))
-
+    
             # add final classificaiton to the segment
 
 
