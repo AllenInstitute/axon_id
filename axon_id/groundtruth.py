@@ -4,19 +4,19 @@ import vtk
 import os
 
 
-import cloudvolume
-from caveclient import CAVEclient
+#import cloudvolume
+#from caveclient import CAVEclient
 from meshparty import meshwork, trimesh_vtk
-from taskqueue import queueable
+#from taskqueue import queueable
 
 from . import visualizations
 from . import neuron_io
 
-client = CAVEclient('minnie65_phase3_v1')
-cv = cloudvolume.CloudVolume(client.info.segmentation_source(), progress = False, use_https = True, parallel=24)
+#client = CAVEclient('minnie65_phase3_v1')
+#cv = cloudvolume.CloudVolume(client.info.segmentation_source(), progress = False, use_https = True, parallel=24)
 
 
-def find_axon_heuristic(msh, client = client, ratio_threshold = .8): # newer one
+def find_axon_heuristic(msh, client, ratio_threshold = .8): # newer one
         
     """
     Identifies segments on a neuron that are likely axons (heuristic)
@@ -328,7 +328,7 @@ def extract_features_training(msh_folder_path, df_folder_path): # do this but wi
     
     '''
     takes in a folder that contains all the dataframes with segments and their classifications
-    will extract the features for each segment and visulaize. 
+    will extract the features for each segment and visualize. 
 
 
 

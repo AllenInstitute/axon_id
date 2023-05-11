@@ -81,7 +81,7 @@ def load_mws_from_folder(folder_path, local = False, asdict = False, update_root
     '''
 
 
-    if 'gs://' not in folder_path and not local:
+    if '://' not in folder_path and not local:
         cloud_root = os.environ.get('SAVE_LOCATION', 'gs://allen-minnie-phase3/minniephase3-emily-pcg-skeletons')
         folder_path = os.path.join(cloud_root, folder_path)
     elif not local:

@@ -1,7 +1,7 @@
 import vtk
-
-import cloudvolume
-from caveclient import CAVEclient
+import matplotlib.pyplot as plt
+#import cloudvolume
+#from caveclient import CAVEclient
 from meshparty import trimesh_vtk
 
 #client = CAVEclient('minnie65_phase3_v1')
@@ -12,7 +12,9 @@ def visualize(msh, skel_color = (0,0,0), skel_width = 3,
               pre = True, pre_color = (0,0,.8), pre_size = 2000, 
               post = True, post_color = (0.9,.3,.7), post_size = 2000, 
               branch = True, branch_color = (.6,.5,.5), branch_size = 5000,
-              end = True, end_color = (.1,.5,.1), end_size = 5000):
+              end = True, end_color = (.1,.5,.1), end_size = 5000,
+              seg_center_display = False, seg_ctr_value = 'skel idx', 
+              seg_ctr_scale = (1000, 1000, 1000), seg_num = None):
     
     """
     returns list of actors to create a VTK visualization of a skeleton. Optionally  
@@ -102,12 +104,50 @@ def visualize(msh, skel_color = (0,0,0), skel_width = 3,
         endpoints_actor = trimesh_vtk.point_cloud_actor(msh.skeleton.vertices[msh.skeleton.end_points], 
                                                                   size = end_size, color = end_color) 
         actors_list.append(endpoints_actor)
+    
+    if seg_center_display == True:
+        actors_list = display_seg_center(msh.skeleton, actors_list, seg_ctr_value, seg_num = seg_num)
 
     
     # put it all together to visualize w/ vtk
     return actors_list   
     
-def visualize_segment(msh, segment, skel_color = (0,0,0), skel_width = 3,
+def display_seg_center(skel, actors_list, seg_ctr_value = 'skel idx',
+         seg_ctr_scale = (1000, 1000, 1000), seg_num = None):
+    segments_list = skel.segments
+    for i in range(len(segments_list)):
+        # find center point of each segment (skeleton index and vertex of the center point)
+        seg = segments_list[i]
+        seg_ctr_idx = seg[len(seg)//2] # skel index in the center of the segment
+        seg_ctr_vtx = (skel.vertices[int(seg_ctr_idx)]) # 3d vertex at that skel idx location 
+        
+        # create the text actor for that seg center point
+        text = vtk.vtkVectorText()
+        if seg_ctr_value == 'skel idx':
+            text.SetText(str(seg_ctr_idx)) # text displays the skeleton index
+        elif seg_ctr_value == 'seg idx':
+            if seg_num is None:
+                seg_num = (i)
+            text.SetText(str(seg_num)) # text displays index of the segment
+        else:
+            raise TypeError('seg_ctr_value must either be \'skel idx\' or \'seg idx\'')
+        
+        text_mapper = vtk.vtkPolyDataMapper()
+        text_mapper.SetInputConnection(text.GetOutputPort())
+        
+        text_actor = vtk.vtkFollower()
+        text_actor.GetProperty().ShadingOff()
+        text_actor.GetProperty().SetColor(1.0,1.0,1.0)
+        text_actor.SetMapper(text_mapper)
+        text_actor.SetScale(seg_ctr_scale) # size set by function parameter 
+        text_actor.AddPosition(seg_ctr_vtx)
+        
+        actors_list.append(text_actor)
+
+    return actors_list
+
+        
+def visualize_segment(msh, ctr_point, skel_color = (0,0,0), skel_width = 3,
               pre = True, pre_color = (0,0,.8), pre_size = 2000, 
               post = True, post_color = (0.9,.3,.7), post_size = 2000, 
               branch = True, branch_color = (.6,.5,.5), branch_size = 5000,
@@ -121,9 +161,8 @@ def visualize_segment(msh, segment, skel_color = (0,0,0), skel_width = 3,
     ----------
     msh : meshparty.meshwork.meshwork.Meshwork
         Meshwork object with skeleton based on the level 2 graph. See pcg_skel documentation for details.
-    segment : list of skeleton indices
-        a path from a branch or end point (inclusive) to the next rootward branch/root point (exclusive), 
-        that cover the skeleton. The visualization will be centered at this segment. 
+    crt_pt : skeleton index
+        Node on which to center visualization
     skel_color : tuple 
         a len(3) tuple with the 0-1 rgb color of the skeleton
     skel_width : int
@@ -164,7 +203,7 @@ def visualize_segment(msh, segment, skel_color = (0,0,0), skel_width = 3,
         # for double checking
     
     # focus the vtk camera on the central point of the segment
-    ctr_point = msh.skeleton.vertices[segment[len(segment)//2]]
+    #ctr_point = msh.skeleton.vertices[segment[len(segment)//2]]
     camera = vtk.vtkCamera()
     camera.SetFocalPoint(ctr_point)
 
@@ -185,7 +224,8 @@ def visualize_skeleton(skel, skel_color = (0,0,0), skel_width = 3, segment = Non
               branch = False, branch_color = (.6,.5,.5), branch_size = 5000,
               end = False, end_color = (.1,.5,.1), end_size = 5000, 
               seg_center_display = False, seg_ctr_scale = (1000, 1000, 1000),
-              seg_ctr_value = 'idx'):
+              seg_ctr_value = 'idx', seg_classes = [],
+              seg_color_map = None, ret_act = False):
     
     """
     creates a skeleton visualization with optional inclusions 
@@ -221,7 +261,10 @@ def visualize_skeleton(skel, skel_color = (0,0,0), skel_width = 3, segment = Non
     seg_ctr_value : str
         string indicating weather to display the skeleton index or vertex point of each segment center. 
         'vtx' for vertex, 'idx' for index 
-
+    seg_classes : str
+        list of seg classes in order
+    seg_color_map : dict
+        dict indicating the index of every segment class and the color it should be 
     
     Returns
     -------
@@ -295,11 +338,83 @@ def visualize_skeleton(skel, skel_color = (0,0,0), skel_width = 3, segment = Non
             
             actors_list.append(text_actor)
 
-    
+    if ret_act:
+        return actors_list
     # visualize
     visualization = trimesh_vtk.render_actors(actors_list, camera = camera)
 
     return visualization
+
+
+def visualize_skeleton_segments_color(mw, seg_classes, seg_color_map = None,
+              pre = True, pre_color = (0,0,.8), pre_size = 400, 
+              post = True, post_color = (0.9,.3,.7), post_size = 400, 
+              branch = False, branch_color = (.6,.5,.5), branch_size = 5000,
+              end = False, end_color = (.1,.5,.1), end_size = 5000,
+              seg_center_display = False, seg_ctr_value = 'skel idx', 
+              seg_ctr_scale = (1000, 1000, 1000), node_center_camera = None):
+    # copy the skel 
+    
+    actors_list = []
+    # go segment by segment 
+    for i in range(len(seg_classes)):
+        _mw = mw.copy()
+        seg = mw.segments()[i]
+        if len(mw.skeleton.segments[i]) == 1:
+            # add parent node to mw seg or else it can't be plotted
+            seg = list(seg)
+            parent_ind = int(mw.parent_index(seg[-1]))
+            seg.append(parent_ind)
+            seg = mw.MeshIndex(seg)
+
+        # create a skel with just this segment 
+        _mw.apply_mask(seg.to_mesh_mask)
+        # now find the class and color 
+        classification = seg_classes[i]
+        color = seg_color_map[classification]
+
+
+        # now pull out radius 
+        skel_width = _mw.anno.segment_properties.df.head(1)['r_eff'].values*.1
+
+        # set camera if node_center_camera
+        if node_center_camera is not None:
+            # get the x y z
+            ctr_point = mw.skeleton.vertices[node_center_camera]
+            camera = vtk.vtkCamera()
+            camera.SetFocalPoint(ctr_point)
+        else:
+            camera = None
+
+
+        # now plot this _sk with the visualize_skeleton func
+        
+        
+        actrs = visualize(_mw, skel_color = color, skel_width=skel_width, 
+            pre_size = pre_size, post_size = post_size,
+            branch = branch, branch_color = branch_color, branch_size = branch_size,
+            end = end, end_color = end_color, end_size = end_size,
+            seg_center_display = seg_center_display, seg_ctr_value = seg_ctr_value, 
+            seg_ctr_scale = seg_ctr_scale, seg_num = i)
+    
+        
+        actors_list.append(actrs)
+        
+    # flatten list 
+
+    
+    actors_list = [item for sublist in actors_list for item in sublist]
+    visualization = trimesh_vtk.render_actors(actors_list, camera = camera)
+    
+    return visualization
+
+
+
+
+
+
+
+
 
 # from Forrest
 import pandas as pd

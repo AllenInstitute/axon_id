@@ -71,7 +71,7 @@ def extract_features(mshwks):
 
         for i in range(len(body_df)):
 
-            seg = body_df.loc[i,'segment']
+            seg = msh.skeleton.segments[i]
 
             body_df.loc[i, 'root_id'] = seg_id
             
@@ -84,7 +84,8 @@ def extract_features(mshwks):
             body_df.loc[i, 'length'] = len(seg)
 
             # pull out mesh indices of seg 
-            msh_seg = [s.to_mesh_index for s in seg]
+
+            msh_seg = [msh.SkeletonIndex(s).to_mesh_index for s in seg]
             # flatten
             msh_seg = [item for sublist in msh_seg for item in sublist]
 
@@ -531,7 +532,7 @@ def make_classification_df(mw, m1, m2):
 
     # apply rf1 to features df
     print('applying model 1...')
-    X1 = features_df.drop(['supervoxel_id', 'soma_pt', 'root_id', 'segment', 'pre', 'post'], axis = 1)
+    X1 = features_df.drop(['soma_pt', 'root_id', 'soma_id', 'segment', 'pre', 'post', 'pre_size', 'post_size', 'radius'], axis = 1)
     predicted_segment_classifications_rf1 = rf1.predict(X1)
     # save results to memory
     classification_df_rf1 = features_df.copy()
@@ -544,12 +545,21 @@ def make_classification_df(mw, m1, m2):
 
     # apply rf2 to features df
     print('applying model 2...')
-    X2 = classification_df_rf1_neighbors.drop(['classification', 'supervoxel_id', 'soma_pt', 'root_id', 'segment', 'pre', 'post'], axis = 1)
+    X2 = classification_df_rf1_neighbors.drop(['classification', 'soma_pt', 'root_id', 'soma_id', 'segment', 'pre', 'post', 'pre_size', 'post_size', 'radius'], axis = 1)
     predicted_segment_classifications_rf2 = rf2.predict(X2)
     # save results to memory
     classification_df_rf2 = classification_df_rf1_neighbors.copy()
     classification_df_rf2['predicted classification rf2'] = predicted_segment_classifications_rf2
     return classification_df_rf2
+
+def apply_first_class(mw, m1):
+    rf1 = joblib.load(m1)
+    features_df = extract_features([mw])
+    X1 = features_df.drop(['soma_pt', 'root_id', 'soma_id', 'segment', 'pre', 'post', 'pre_size', 'post_size', 'radius'], axis = 1)
+    predicted_segment_classifications_rf1 = rf1.predict(X1)
+    classification_df_rf1 = features_df.copy()
+    classification_df_rf1['classification'] = predicted_segment_classifications_rf1
+    return classification_df_rf1
 
 @queueable
 def remove_axons_tq(source_cloud_folder, filename, destination_cloud_file, m1, m2):
