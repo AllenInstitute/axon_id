@@ -118,8 +118,19 @@ def display_seg_center(skel, actors_list, seg_ctr_value = 'skel idx',
     for i in range(len(segments_list)):
         # find center point of each segment (skeleton index and vertex of the center point)
         seg = segments_list[i]
-        seg_ctr_idx = seg[len(seg)//2] # skel index in the center of the segment
-        seg_ctr_vtx = (skel.vertices[int(seg_ctr_idx)]) # 3d vertex at that skel idx location 
+        if len(seg) == 2:
+            seg_ctr_idx1 = seg[0]  # skel index of the first vertex
+            seg_ctr_vtx1 = skel.vertices[int(seg_ctr_idx1)] # 3d vertex at that skel idx location
+
+            seg_ctr_idx2 = seg[1]  # skel index of the second vertex
+            seg_ctr_vtx2 = skel.vertices[int(seg_ctr_idx2)] # 3d vertex at that skel idx location
+
+            # Compute the actual midpoint between the two vertices
+            seg_ctr_vtx = [(v1 + v2)/2 for v1, v2 in zip(seg_ctr_vtx1, seg_ctr_vtx2)]
+            seg_ctr_idx = str(seg_ctr_idx1) + "-" + str(seg_ctr_idx2)
+        else:
+            seg_ctr_idx = seg[len(seg)//2] # skel index in the center of the segment
+            seg_ctr_vtx = skel.vertices[int(seg_ctr_idx)] # 3d vertex at that skel idx location 
         
         # create the text actor for that seg center point
         text = vtk.vtkVectorText()
@@ -357,13 +368,18 @@ def visualize_skeleton_segments_color(mw, seg_classes, seg_color_map = None,
     
     actors_list = []
     # go segment by segment 
+    mw_segments = mw.segments()
     for i in range(len(seg_classes)):
         _mw = mw.copy()
-        seg = mw.segments()[i]
+        seg = mw_segments[i]
         if len(mw.skeleton.segments[i]) == 1:
             # add parent node to mw seg or else it can't be plotted
             seg = list(seg)
-            parent_ind = int(mw.parent_index(seg[-1]))
+            try:
+                parent_ind = int(mw.parent_index(seg[-1]))
+            except:
+                # last seg node is already soma
+                continue
             seg.append(parent_ind)
             seg = mw.MeshIndex(seg)
 

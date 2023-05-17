@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from itertools import combinations
+from itertools import combinations, permutations
 import joblib
 import os
 import io
@@ -19,7 +19,99 @@ cv = cloudvolume.CloudVolume(client.info.segmentation_source(), progress = False
 
 # TO DO : READ MODELS HERE so they dont have to be loaded every time
 
-def extract_features(mshwks): 
+
+            
+
+def extract_features(mw, soma_seg_len = 100): 
+    
+    '''
+    takes in a skeleton meshwork and extracts the features for each segment into a df 
+
+
+
+    Parameters
+    ----------
+    mw : meshparty.meshwork.meshwork.Meshwork
+        meshwork of the bodies to have their features extracted
+  
+    Returns
+    -------
+    final_df : pd.DataFrame()
+        data frame that contains all the segments in all of the skels and their ectracted features. 
+    
+    
+    '''
+    feat_df = pd.DataFrame(data = None, columns = ['root_id', 'soma_id', 'soma_pt', 'segment', 'ctr_pt',  
+                                            'length', 'pre', 'n_pre', 'pre_size', 'post', 'n_post', 'post_size', 
+                                            'total_syn', 'density', 'soma_dist', 'radius', 'endpoint']) 
+
+
+    
+    segs = mw.skeleton.segments
+    
+
+    feat_df.loc[:,'segment'] = segs
+
+    seg_df = mw.anno.segment_properties.df.set_index('mesh_ind_filt')
+
+    endpts = mw.skeleton.end_points
+
+    for i in range(len(feat_df)):
+
+        seg = mw.skeleton.segments[i]
+
+        feat_df.loc[i, 'root_id'] = mw.seg_id
+        
+        feat_df.loc[i, 'soma_id'] = mw.anno.soma_row['id'][0]
+
+        feat_df.loc[i, 'soma_pt'] = mw.skeleton.root
+
+        feat_df.loc[i, 'ctr_pt'] = seg[len(seg)//2]
+
+        # for length, I want to include the parent node unless seg is just soma 
+        
+        if sum(mw.skeleton.root == seg) == 1:
+            feat_df.loc[i, 'length'] = soma_seg_len
+        else:
+            len_seg = list(seg)
+            len_seg.append(int(mw.skeleton.parent_nodes(seg[-1])))
+            len_seg = mw.skeleton.SkeletonIndex(len_seg)
+            feat_df.loc[i, 'length'] = mw.skeleton.path_length(len_seg)
+
+        # pull out mesh indices of seg 
+
+        msh_seg = [mw.SkeletonIndex(s).to_mesh_index for s in seg]
+        # flatten
+        msh_seg = [item for sublist in msh_seg for item in sublist]
+
+        presyn_df = mw.anno.pre_syn.df.set_index('pre_pt_mesh_ind')
+        presyn_df = presyn_df[presyn_df.index.isin(msh_seg)]
+        pre_msh_inds = mw.anno.pre_syn.mesh_index
+        feat_df.at[i, 'pre'] = np.intersect1d(seg, mw.skeleton.mesh_to_skel_map[pre_msh_inds])
+        feat_df.loc[i, 'n_pre'] = len(presyn_df)
+        feat_df.at[i, 'pre_size'] = presyn_df['size'].sum()
+
+        
+        postsyn_df = mw.anno.post_syn.df.set_index('post_pt_mesh_ind')
+        postsyn_df = postsyn_df[postsyn_df.index.isin(msh_seg)]
+        post_msh_inds = mw.anno.post_syn.mesh_index
+        feat_df.at[i, 'post'] = np.intersect1d(seg, mw.skeleton.mesh_to_skel_map[post_msh_inds])
+        feat_df.loc[i, 'n_post'] = len(postsyn_df)
+        feat_df.at[i, 'post_size'] = postsyn_df['size'].sum()
+
+        feat_df.loc[i, 'total_syn'] = feat_df.loc[i, 'n_pre'] + feat_df.loc[i, 'n_post']
+        feat_df.loc[i, 'density'] = feat_df.loc[i, 'total_syn']/feat_df.loc[i, 'length']
+        feat_df.loc[i, 'soma_dist'] = mw.skeleton.path_length(mw.skeleton.path_between(int(mw.skeleton.root), seg[-1]))
+
+        feat_df.loc[i, 'radius'] = np.mean(seg_df.loc[seg_df.index.isin(msh_seg)]['r_eff'])
+        
+        feat_df.loc[i, 'endpoint'] = bool([x for x in seg if x in endpts])
+
+    feat_df = feat_df.replace(np.nan, '-')
+        
+    return feat_df
+
+def extract_features_multiple(mws, soma_seg_len = 100): 
     
     '''
     takes in a list of skeleton meshworks and extracts the features for each segmentinto a df 
@@ -40,80 +132,12 @@ def extract_features(mshwks):
     '''
     final_df = pd.DataFrame(data = None, columns = ['root_id', 'soma_id', 'soma_pt', 'segment', 'ctr_pt',  
                                             'length', 'pre', 'n_pre', 'pre_size', 'post', 'n_post', 'post_size', 
-                                            'total_syn', 'density', 'soma_dist', 'radius']) 
+                                            'total_syn', 'density', 'soma_dist', 'radius', 'endpoint']) 
 
 
 
-    for msh in mshwks:
-        seg_id = msh.seg_id
-        # update the seg_id if necessary 
-        #if client.chunkedgraph.is_latest_roots([int(msh.seg_id)]):
-        #    updated_seg_id = msh.seg_id
-        #else:
-        #    updated_seg_id = neuron_io.get_root_id_from_point(msh.skeleton.vertices[msh.skeleton.root])
-        #    print('updated root is ' + str(updated_seg_id))
-
-        body_df =pd.DataFrame(data = None, columns = ['root_id', 'soma_id', 'soma_pt', 'segment', 'ctr_pt', 
-                                              'length', 'pre', 'n_pre', 'post', 'n_post', 'total_syn', 'density',
-                                              'soma_dist', 'radius']) 
-        
-        segs = msh.skeleton.segments
-        
-
-        body_df.loc[:,'segment'] = segs
-
-        seg_df = msh.anno.segment_properties.df.set_index('mesh_ind')
-
-        seg_df = msh.anno.segment_properties.df
-        seg_df = seg_df.set_index('mesh_ind_filt')
-
-
-
-        for i in range(len(body_df)):
-
-            seg = msh.skeleton.segments[i]
-
-            body_df.loc[i, 'root_id'] = seg_id
-            
-            body_df.loc[i, 'soma_id'] = msh.anno.soma_row['id'][0]
-
-            body_df.loc[i, 'soma_pt'] = msh.skeleton.root
-
-            body_df.loc[i, 'ctr_pt'] = seg[len(seg)//2]
-
-            body_df.loc[i, 'length'] = len(seg)
-
-            # pull out mesh indices of seg 
-
-            msh_seg = [msh.SkeletonIndex(s).to_mesh_index for s in seg]
-            # flatten
-            msh_seg = [item for sublist in msh_seg for item in sublist]
-
-            presyn_df = msh.anno.pre_syn.df.set_index('pre_pt_mesh_ind')
-            presyn_df = presyn_df[presyn_df.index.isin(msh_seg)]
-            pre_msh_inds = msh.anno.pre_syn.mesh_index
-            body_df.at[i, 'pre'] = np.intersect1d(seg, msh.skeleton.mesh_to_skel_map[pre_msh_inds])
-            body_df.loc[i, 'n_pre'] = len(presyn_df)
-            body_df.at[i, 'pre_size'] = presyn_df['size'].sum()
-
-            
-            postsyn_df = msh.anno.post_syn.df.set_index('post_pt_mesh_ind')
-            postsyn_df = postsyn_df[postsyn_df.index.isin(msh_seg)]
-            post_msh_inds = msh.anno.post_syn.mesh_index
-            body_df.at[i, 'post'] = np.intersect1d(seg, msh.skeleton.mesh_to_skel_map[post_msh_inds])
-            body_df.loc[i, 'n_post'] = len(postsyn_df)
-            body_df.at[i, 'post_size'] = postsyn_df['size'].sum()
-
-            body_df.loc[i, 'total_syn'] = body_df.loc[i, 'n_pre'] + body_df.loc[i, 'n_post']
-            body_df.loc[i, 'density'] = body_df.loc[i, 'total_syn']/body_df.loc[i, 'length']
-            body_df.loc[i, 'soma_dist'] = len(msh.skeleton.path_between(int(msh.skeleton.root), msh.skeleton.segments[i][-1]))
-
-            x = np.mean(seg_df.loc[seg_df.index.isin(msh_seg)]['r_eff'])
-            body_df.loc[i, 'radius'] = np.mean(seg_df.loc[seg_df.index.isin(msh_seg)]['r_eff'])
-            if np.isnan(x):
-                print(x)
-                print(msh_seg)
-                print(seg_df.loc[seg_df.index.isin(msh_seg)])
+    for mw in mws:
+        body_df = extract_features(mw, soma_seg_len = soma_seg_len)
 
         final_df = pd.concat([final_df, body_df.replace(np.nan, '-')])
         
@@ -121,11 +145,6 @@ def extract_features(mshwks):
         
     return final_df
         
-            
-
-
-
-
 
 
 
@@ -135,7 +154,9 @@ def extract_features(mshwks):
 
 
       
-def classify_axon_dendrite(msh, model):
+def classify_axon_dendrite(mw, model, model_columns = ['length', 'n_pre', 'pre_size','n_post', 'post_size', 
+                                            'total_syn', 'density', 'soma_dist', 'radius', 'endpoint'],
+                                            soma_seg_len = 100):
     '''
     takes in a meshwork file and classification model and classifies each segment in the body
 
@@ -156,58 +177,59 @@ def classify_axon_dendrite(msh, model):
     
     '''
     
-    #creating the df. type = np.float to allow user to run sns.pairplot later. 
-    classified_segments_df = pd.DataFrame(data = None, columns = ['meshwork', 'root_id', 'soma_pt', 'segment', 'ctr_pt', 'length', 
-                                              'pre', 'n_pre', 'post', 'n_post', 'total_syn', 'density',
-                                              'soma_dist', 'classification'], dtype = np.float64) 
-                                              # df from all meshworks in meshworks list
-                                              # added density, 
+    feats_class_df = extract_features(mw, soma_seg_len = soma_seg_len)
     
+    feats_class_df['classification'] = model.predict(feats_class_df[model_columns], axis = 1)
 
-    classified_segments_df['segment'] = msh.skeleton.segments
+    feats_class_df.reset_index(inplace = True, drop = True)
+        
+    return feats_class_df
 
-    # need to do this because thesthe cells in this columns will contain a set
-    classified_segments_df['pre'] = classified_segments_df['pre'].astype('object')
-    classified_segments_df['post'] = classified_segments_df['post'].astype('object')
 
-    for i in range(len(classified_segments_df)):
+def downstream_segment_graph(sk):
+    '''
+    creates a df with column:
+    'a' - the center point of the first segment of an edge.
+    'class a' - the class of the first segment.
+    'b' - the center point of the second segment of an edge.
+    'class b' - the class of the second segment.
 
-            classified_segments_df.loc[i, 'meshwork'] = msh
+    '''
 
-            if hasattr(msh.skeleton, 'seg_id'):
-                classified_segments_df.loc[i, 'root_id'] = msh.skeleton.seg_id
+    seg_connectivity_df = pd.DataFrame(columns = ['upstream_seg', 'downstream_seg'])
 
-            classified_segments_df.loc[i, 'soma_pt'] = int(msh.skeleton.root)
-            
-            seg = classified_segments_df.loc[i, 'segment']
-            
-            classified_segments_df.loc[i, 'ctr_pt'] = seg[len(seg)//2]
-            
-            classified_segments_df.loc[i, 'length'] = len(seg)
-            
-            classified_segments_df.at[i, 'pre'] = np.intersect1d(seg, msh.skeleton.mesh_to_skel_map[msh.anno.pre_syn.mesh_index])
-            classified_segments_df.loc[i, 'n_pre'] = len(classified_segments_df.loc[i, 'pre'])
-            
-            classified_segments_df.at[i, 'post'] = np.intersect1d(seg, msh.skeleton.mesh_to_skel_map[msh.anno.post_syn.mesh_index])
-            classified_segments_df.loc[i, 'n_post'] = len(classified_segments_df.loc[i, 'post'])
-            
-            classified_segments_df.loc[i, 'total_syn'] = classified_segments_df.loc[i, 'n_pre'] + classified_segments_df.loc[i, 'n_post']
-            classified_segments_df.loc[i, 'density'] = classified_segments_df.loc[i, 'total_syn']/classified_segments_df.loc[i, 'length']
-            
-            classified_segments_df.loc[i, 'soma_dist'] = len(msh.path_between(int(msh.skeleton.seg_id), msh.skeleton.segments[i][-1], return_as_skel = True))
+    for skidx in sk.branch_points:
+
+        segment_idx = sk.segment_map[skidx]
+        segment = sk.segments[segment_idx]
+
+        child_nodes = sk.child_nodes(skidx)
+        for node in child_nodes:
+            child_seg_idx = sk.segment_map[node]
+            child_seg = sk.segments[child_seg_idx]
+            new_row = [segment, child_seg]
+            seg_connectivity_df.loc[len(seg_connectivity_df)] = new_row
     
-            # add final classificaiton to the segment
+    return seg_connectivity_df
+
+def sibling_segment_graph(sk, col_names = ['upstream_seg', 'downstream_seg']):
+    '''
+    creates a df tracking when a -> [b, c, d], b c and d are 'siblings'
+    '''
+
+    seg_connectivity_df = pd.DataFrame(columns = col_names)
 
 
+    for skidx in sk.branch_points:
 
-    classified_segments_df['classification'] = model.predict(classified_segments_df.drop(['classification', 'soma_pt', 'meshwork', 'root_id', 'segment', 'soma_pt', 'pre', 'post'], axis = 1))
+        child_nodes = sk.child_nodes(skidx)
+        child_segs = sk.segment_map[child_nodes]
 
-        
-    classified_segments_df.reset_index(inplace = True, drop = True)
-        
-    return classified_segments_df
-
-
+        # now get combos of the child segs
+        lil_connectivity_df = pd.DataFrame(list(permutations(child_segs, 2)), 
+                                            columns = col_names)
+        seg_connectivity_df = seg_connectivity_df.append(lil_connectivity_df)
+    return seg_connectivity_df
 
 
 
@@ -216,7 +238,7 @@ def segment_graph(skel, df):
     '''
     
     creates a graph of each segment-neighbor pair, where each segment is represented by the segment centerpoint 
-    
+    df must have 'ctr_pt' and 'classification
     '''
     
     
