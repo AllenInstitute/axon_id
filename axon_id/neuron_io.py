@@ -8,10 +8,6 @@ from taskqueue import queueable
 import io
 from cloudfiles import CloudFiles
 
-#client = CAVEclient('minnie65_phase3_v1')
-#cv = cloudvolume.CloudVolume(client.info.segmentation_source(), progress = False, use_https = True, parallel=24)
-
-#client.materialize.version = 117 
 
 def write_meshwork_h5_to_folder(msh, folder_path, filename = None):
 
