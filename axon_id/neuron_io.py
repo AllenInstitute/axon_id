@@ -1,17 +1,15 @@
 import os
-import meshparty
 import pandas as pd
 import pcg_skel
 import cloudvolume
-from caveclient import CAVEclient
 from meshparty import meshwork
 from meshparty.skeleton_io import write_skeleton_h5
 from taskqueue import queueable
 import io
 from cloudfiles import CloudFiles
 
-client = CAVEclient('minnie65_phase3_v1')
-cv = cloudvolume.CloudVolume(client.info.segmentation_source(), progress = False, use_https = True, parallel=24)
+#client = CAVEclient('minnie65_phase3_v1')
+#cv = cloudvolume.CloudVolume(client.info.segmentation_source(), progress = False, use_https = True, parallel=24)
 
 #client.materialize.version = 117 
 
@@ -132,7 +130,7 @@ def load_mws_from_folder(folder_path, local = False, asdict = False, update_root
 
 
 @queueable
-def list_meshworks(bodies, folder_path, verbose = False, secret = None):
+def list_meshworks(bodies, folder_path, cv = None, verbose = False, secret = None, client = None):
     
     """
     returns a list of meshworks from a list of supervoxel ids and stores those meshes in a specified local path
@@ -233,7 +231,7 @@ def retrieve_meshes(folder_path):
     return mesh_list  
      
 
-def root_to_supervoxel(root_id_list, soma_df = pd.DataFrame(), verbose = False):
+def root_to_supervoxel(root_id_list, soma_df, client, verbose = False):
     '''
     takes in a list of root ids and returns their supervoxel ids
 
@@ -282,7 +280,7 @@ def root_to_supervoxel(root_id_list, soma_df = pd.DataFrame(), verbose = False):
 
 
 
-def get_root_id_from_point(point, voxel_resolution = [1,1,1]):
+def get_root_id_from_point(point, client, cv, voxel_resolution = [1,1,1]):
 
     '''
     gets the currrent root_id for a root point
@@ -295,7 +293,7 @@ def get_root_id_from_point(point, voxel_resolution = [1,1,1]):
 
     return int(cv.download_point(point, size=1, coord_resolution=voxel_resolution, agglomerate=True, timestamp=timestamp))
 
-def update_root_from_mw(mw):
+def update_root_from_mw(mw, client):
     '''
     returns updated root based on the root point location in msh if possible. if no 
     root point location, updates via the update_root fn
@@ -343,7 +341,7 @@ def update_root_from_mw(mw):
 
 
 @queueable
-def pcg_skeletonize(root_id, cloud_path):
+def pcg_skeletonize(root_id, cloud_path, client, cv):
     mw = pcg_skel.pcg_meshwork(root_id = root_id, client = client, cv = cv, refine = 'all')
     write_meshwork_h5_to_folder(mw, cloud_path)
 
