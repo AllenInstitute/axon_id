@@ -4,6 +4,7 @@ import joblib
 
 
 from axon_id import graph
+from meshparty import meshwork 
             
 
 def extract_features(mw, soma_seg_len = 10000): 
@@ -182,20 +183,129 @@ def extract_features_2(mw, m1_class_df):
 
 # function to take a mw, extract all features, then mask out the axons 
 
-def mask_out_axons(mw, m1, m2, model2_columns = ['length', 'n_pre', 'pre_size', 'n_post', 'post_size', 'total_syn',
+def class_1_2_axons(mw, m1, m2, model2_columns = ['length', 'n_pre', 'pre_size', 'n_post', 'post_size', 'total_syn',
        'density', 'soma_dist', 'radius', 'endpoint', 'self/parent_rad','classification', 'axon neighbor count', 
        'dendrite neighbor count', 'upstream_class'], 
        model1_columns = ['length', 'n_pre', 'pre_size', 'n_post', 'post_size', 'total_syn',
         'density', 'soma_dist', 'radius', 'endpoint', 'self/parent_rad'], 
-        soma_seg_len = 10000):
+        soma_seg_len = 10000, mask_out_ax = False, axon_class_anno = 'is_axon_class'):
+    
+    '''
+    applies first and second classifier. saves axon verts in anno
+    optionally applies mask to mask out axons 
+    '''
 
     # create m1 and m2 classification df 
-    class_df = classify_axon_dendrite_2(mw, m1, m2, model2_columns = model2_columns, model1_columns = model1_columns) 
+    class_df = classify_axon_dendrite_2(mw, m1, m2, model2_columns = model2_columns, model1_columns = model1_columns,
+                        soma_seg_len = soma_seg_len) 
 
     # now get a map 
     skel_mask_df = graph.skel_dendrite_map(class_df, mw)
-    skel_verts = mw.SkeletonIndex(skel_mask_df[skel_mask_df['tf dendrite']]['skeleton index'])
+    skel_ax_verts = mw.SkeletonIndex(skel_mask_df[skel_mask_df['tf dendrite'] == False]['skeleton index'])
+    mesh_ax_verts = skel_ax_verts.to_mesh_index
+    # save the annotation
+    mw.anno.add_annotations(axon_class_anno, mesh_ax_verts, mask=True)
+
+
     # apply mask to skeleton
-    mw.apply_mask(skel_verts.to_mesh_mask)
+    if mask_out_ax:
+        mw.apply_mask(~mesh_ax_verts.to_mesh_mask)
     return mw
+
+
+def find_primary_axon(mw, certainty_threshold = 0.7, pre_anno='pre_syn', post_anno='post_syn',
+                            mask_out_ax = False, primary_axon_anno = 'is_primary_axon'):
+    '''
+    identifies primary axon, saves axon mesh segments in primary axon
+    if certainty score is high enough, optionally masks out that id'd axon
+    
+    '''
+
+    axon_inds, Q = meshwork.algorithms.split_axon_by_annotation(mw, pre_anno=pre_anno, post_anno=post_anno)
+
+    if Q >= certainty_threshold:
+        mw.anno.add_annotations(primary_axon_anno, axon_inds, mask=True)
+    else:
+        mw.anno.add_annotations(primary_axon_anno, mw.MeshIndex([]), mask=True)
+    # mask the mw if Q ? certainty threshold 
+    if Q >= certainty_threshold and mask_out_ax:
+        mw.apply_mask(axon_inds)
+    elif Q < certainty_threshold:
+        print(f'certainty threshold not met, primary axon not masked out. Q = {Q}')
+
+    return mw
+
+
+def combine_primary_and_axon_class(mw, axon_class_anno = 'is_axon_class', 
+                                    primary_axon_anno = 'is_primary_axon',
+                                    ax_agglom_anno = 'is_all_axon',
+                                    mask_out_ax = False):
+
+    '''
+    takes two axon labels and adds another annotation that has the set of both together 
+    '''
+
+    # find the entire set of all axon mesh indices 
+    all_axon = mw.MeshIndex(list(set(mw.anno[axon_class_anno]['mesh_index']) | set(mw.anno[primary_axon_anno]['mesh_index'])))
+
+    mw.anno.add_annotations(ax_agglom_anno, all_axon, mask=True)
+
+    if mask_out_ax:
+        mw.apply_mask(~mw.anno[ax_agglom_anno].mesh_mask)
+
+
+def add_class_12_primary_anno(mw, m1, m2, model2_columns = ['length', 'n_pre', 'pre_size', 'n_post', 'post_size', 'total_syn',
+       'density', 'soma_dist', 'radius', 'endpoint', 'self/parent_rad','classification', 'axon neighbor count', 
+       'dendrite neighbor count', 'upstream_class'], 
+       model1_columns = ['length', 'n_pre', 'pre_size', 'n_post', 'post_size', 'total_syn',
+        'density', 'soma_dist', 'radius', 'endpoint', 'self/parent_rad'], 
+        soma_seg_len = 10000, mask_out_ax = False, axon_class_anno = 'is_axon_class', 
+        certainty_threshold = 0.7, pre_anno='pre_syn', post_anno='post_syn',
+        primary_axon_anno = 'is_primary_axon', 
+        ax_agglom_anno = 'is_all_axon'):
+        '''
+        returns two things, mw (with new annos and optionally applied mask), axon segment map
+
+        apply round 1 and 2 classification, add annotation for level 2 axon class saved as axon_class_anno
+        apply primary axon classification, add annotation as primary_axon_anno
+        combine those two as ax_agglom_anno
+        also return segment axon map
+        '''
+        # add class 1, 2 anno 
+        class_1_2_axons(mw, m1, m2, model2_columns = model2_columns, 
+            model1_columns = model1_columns, 
+            soma_seg_len = soma_seg_len, mask_out_ax = mask_out_ax, axon_class_anno = axon_class_anno)
+        
+        # add primary axon anno 
+        find_primary_axon(mw, certainty_threshold = certainty_threshold, pre_anno=pre_anno, 
+                            post_anno=post_anno, mask_out_ax = mask_out_ax, primary_axon_anno = primary_axon_anno)
+        
+        # combine these two 
+        combine_primary_and_axon_class(mw, axon_class_anno = axon_class_anno, 
+                                    primary_axon_anno = primary_axon_anno,
+                                    ax_agglom_anno = ax_agglom_anno,
+                                    mask_out_ax = mask_out_ax)
+        
+        # now add axon segment map
+        ax_seg_map = get_segment_axon_map(mw, ax_agglom_anno = ax_agglom_anno)
+
+        return mw, ax_seg_map
+
+
+
+
+def get_segment_axon_map(mw, ax_agglom_anno = 'is_all_axon'):
+    '''
+    creates a boolean map of whether or not each segment is axon or not
+    '''
+    
+    # translate mesh to skeleton indices 
+    axon_skinds = mw.anno[ax_agglom_anno].skel_index
+    # search for last skeleton index or each segment
+    seg_endpts = [seg[0] for seg in mw.skeleton.segments]
+    # now get map of if each seg_endpt is in axon_skinds 
+    tf_axon = [int(x) in axon_skinds for x in seg_endpts]
+
+    return tf_axon
+
 
