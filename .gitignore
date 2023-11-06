@@ -18,3 +18,4 @@ skeletontask.yml
 .DS_Store
 .dockerignore
 .env.docker
+*__pycache__/
