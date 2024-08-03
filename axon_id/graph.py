@@ -81,7 +81,6 @@ def skel_dendrite_map(df, mw, r2_class_col = 'r2_classification'):
     
     # make sure soma is not masked out 
     somaind = map_df[map_df['skeleton index'] == mw.skeleton.root].index
-    print(somaind)
     map_df.loc[somaind, 'tf dendrite'] = True
 
     return map_df
@@ -146,12 +145,13 @@ def segment_graph(skel, df):
             combodf.loc[i, 'class b'] = seg_connectivity_df.loc[seg_connectivity_df['b']==combodf.loc[i, 'b'],['class b']].iloc[0,0]
             
             # add the combo df to the end of the connectivity df 
-            running_combo_df = running_combo_df.append(combodf)
+            running_combo_df = pd.concat([running_combo_df, combodf], ignore_index=True)
             #seg_connectivity_df.drop_duplicates(inplace = True)
             #return(seg_connectivity_df)
     
     # add the running combo df (which contains all combos) to the seg connectivity df
-    seg_connectivity_df = seg_connectivity_df.append(running_combo_df)
+    seg_connectivity_df = pd.concat([seg_connectivity_df, running_combo_df], ignore_index=True)
+
     
     # we are making this an undirected graph, so add the b columns to a and their corresponding a columns to b
     reversed_seg_connectivity_df = seg_connectivity_df.copy()

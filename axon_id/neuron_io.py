@@ -38,7 +38,7 @@ def write_meshwork_h5_to_folder(msh, folder_path, filename = None):
             cf.put(f'{filename}.h5', bio.read())
     
     else:
-        msh.save_meshwork(f'{filename}.h5')
+        msh.save_meshwork(os.path.join(folder_path, f'{filename}.h5'))
 
 def write_skeleton_h5_to_cf(skel, cf_path, filename = None):
 

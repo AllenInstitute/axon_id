@@ -217,7 +217,7 @@ def create_seg_color_map(df):
         
       
 
-def check_classifications_visually(sup_id, seg_class_df = pd.DataFrame(), seg_class_df_path = '', return_msh_and_df = False):
+def check_classifications_visually(sup_id, client, seg_class_df = pd.DataFrame(), seg_class_df_path = '', return_msh_and_df = False):
 
     # NEED HELP WITH THIS AND THE WHOLE GROUNDTRUTH PIPELINE LOL
 
@@ -324,7 +324,7 @@ def process_input_df(df):
 
     return df
 
-def extract_features_training(msh_folder_path, df_folder_path): # do this but with a folder full of dfs 
+def extract_features_training(msh_folder_path, df_folder_path, client): # do this but with a folder full of dfs 
     
     '''
     takes in a folder that contains all the dataframes with segments and their classifications
